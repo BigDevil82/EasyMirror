@@ -43,7 +43,6 @@ class LeoMirrorApp:
     def entry_point(self):
         try:
             self.req_rewriter.assemle_parse()
-            self.req_rewriter.extract_client_header()
             self.req_sender.request_remote_site()
             resp = self.resp_rewriter.generate_our_response()
             return resp
