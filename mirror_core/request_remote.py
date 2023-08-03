@@ -1,12 +1,14 @@
 from time import time
 from urllib.parse import urlsplit
-from flask import request
-import requests
 
-from connection_pool import get_session
-from shares import Shares, conf, logger
-from threadlocal import ZmirrorThreadLocal
+import requests
+from flask import request
+
 from utils.util import current_line_number
+
+from .connection_pool import get_session
+from .shares import Shares, conf, logger
+from .threadlocal import ZmirrorThreadLocal
 
 
 class RequestSender:
@@ -34,7 +36,7 @@ class RequestSender:
                 encoding = None
             else:
                 # data是文本内容, 则进行重写, 并返回str
-                data_str = self.client_requests_text_rewrite(data_str)  # type: str
+                data_str = self.G.client_requests_text_rewrite(data_str)  # type: str
 
         # 下面这个if是debug用代码, 对正常运行无任何作用
         if conf.developer_string_trace:  # coverage: exclude
@@ -84,7 +86,7 @@ class RequestSender:
         self.parse.time["req_start_time"] = time()
         r = _session.send(
             prepared_req,
-            proxies=conf.proxy_settings,
+            proxies=conf.proxy_settings if conf.is_use_proxy else None,
             allow_redirects=False,  # disable redirect
             stream=conf.stream_transfer_enable,
             verify=not conf.developer_disable_ssl_verify,

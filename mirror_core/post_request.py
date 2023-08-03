@@ -1,16 +1,17 @@
-from collections import Counter
 import queue
 import threading
+from collections import Counter
 from time import process_time, time
 from urllib.parse import urljoin, urlsplit
 
 from flask import Response, request
 from requests import Response as requests_Response
 
-from CONSTS import __VERSION__ as pkg_version
-from shares import Shares, logger, conf
-from threadlocal import ZmirrorThreadLocal
 from utils.util import *
+
+from .CONSTS import __VERSION__ as pkg_version
+from .shares import Shares, conf, logger
+from .threadlocal import ZmirrorThreadLocal
 
 
 class ResponseRewriter:
@@ -60,80 +61,6 @@ class ResponseRewriter:
             v=4,
         )
 
-    def url_regex_pattern(self):
-        """
-        用于匹配响应文本中的url的正则表达式
-        包含以下捕获组：
-            scheme: http(s):
-            scheme_slash: // or /
-            quote: " or '
-            domain: target.domain
-            suffix_slash: // or / or None
-        :rtype: re.Pattern
-        """
-
-        # 统计各个后缀出现的频率, 并且按照出现频率降序排列, 有助于提升正则效率
-        tld_freq = Counter(re.escape(x.split(".")[-1]) for x in conf.allowed_domains)
-        all_remote_tld = sorted(list(tld_freq.keys()), key=lambda tld: tld_freq[tld], reverse=True)
-        re_all_remote_tld = "(?:" + "|".join(all_remote_tld) + ")"
-
-        re_scheme = r"""(?:https?(?P<colon>{REGEX_COLON}))?""".format(
-            REGEX_COLON=self.G.re_consts["COLON"]
-        )  # http(s): or nothing(note the ? at the end)
-        re_scheme_slash = r"""(?P<scheme_slash>{SLASH})(?P=scheme_slash)""".format(
-            SLASH=self.G.re_consts["SLASH"]
-        )  # //
-        re_quote = r"""(?P<quote>{REGEX_QUOTE})""".format(REGEX_QUOTE=self.G.re_consts["QUOTE"])
-        re_domain = r"""(?P<domain>([a-zA-Z0-9-]+\.){1,5}%s)\b""" % re_all_remote_tld
-        # explain: (?(name)yes-pattern|no-pattern)
-        #  if the group with given name matched, then use yes-pattern, else use no-pattern, and if no-pattern is omitted, then use empty string
-        re_suffix_slash = r"""(?P<suffix_slash>(?(scheme_slash)(?P=scheme_slash)|{SLASH}))?""".format(
-            self.G.re_consts["SLASH"]
-        )  # suffix slash is optional(not the ? at the end)
-        # right quote (if we have left quote)
-        re_right_quote = r"""(?(quote)(?P=quote))"""
-
-        re_whole_url: re.Pattern = re.compile(
-            f"(?:{re_scheme}{re_scheme_slash}|{re_quote}){re_domain}{re_suffix_slash}{re_right_quote}"
-        )
-
-        return re_whole_url
-
-        return re.compile(
-            r"""(?:"""
-            + (  # [[http(s):]//] or [\?["']] or %27 %22 or &quot;
-                r"""(?P<scheme>"""
-                + (  # [[http(s):]//]
-                    (  # [http(s):]
-                        r"""(?:https?(?P<colon>{REGEX_COLON}))?""".format(
-                            REGEX_COLON=self.G.re_consts["COLON"]
-                        )  # https?:
-                    )
-                    + r"""(?P<scheme_slash>%s)(?P=scheme_slash)""" % self.G.re_consts["SLASH"]  # //
-                )
-                + r""")"""
-                + r"""|"""
-                +
-                # [\?["']] or %27 %22 or &quot
-                r"""(?P<quote>{REGEX_QUOTE})""".format(REGEX_QUOTE=self.G.re_consts["QUOTE"])
-            )
-            + r""")"""
-            +
-            # End prefix.
-            # Begin domain
-            r"""(?P<domain>([a-zA-Z0-9-]+\.){1,5}%s)\b""" % re_all_remote_tld
-            +
-            # Optional suffix slash
-            # explain: (?(name)yes-pattern|no-pattern)
-            #  if the group with given name matched, then use yes-pattern, else use no-pattern, and if no-pattern is omitted, then use empty string
-            r"""(?P<suffix_slash>(?(scheme_slash)(?P=scheme_slash)|{SLASH}))?""".format(
-                SLASH=self.G.re_consts["SLASH"]
-            )
-            +
-            # right quote (if we have left quote)
-            r"""(?(quote)(?P=quote))"""
-        )
-
     def rewrite_remote_to_mirror_url(self, remote_resp):
         """
         将远程服务器响应文本中的url重写为镜像站的url
@@ -150,7 +77,7 @@ class ResponseRewriter:
             colon = get_group("colon", m) or guess_colon_from_slash(slash)
             quote = get_group("quote", m)
 
-            _my_host_name = conf.my_host_name.replace(":", colon) if conf.my_port else conf.my_host_name
+            _my_host_name = conf.my_host_name
 
             if remote_domain in conf.target_domain_alias:
                 # 主域名
@@ -167,7 +94,7 @@ class ResponseRewriter:
                 else:  # //target.domain
                     return slash * 2 + core
 
-        return self.url_regex_pattern.sub(to_mirror_url, remote_resp)
+        return self.G.re_patterns["basic_url"].sub(to_mirror_url, remote_resp)
 
     def regex_url_reassemble(self, match_obj: re.Match):
         """
@@ -388,10 +315,59 @@ class ResponseRewriter:
         return resp_text.encode(encoding="utf-8"), req_time_body  # return bytes
 
     def response_cookies_deep_copy(self):
-        pass
+        """
+        It's a BAD hack to get RAW cookies headers, but so far, we don't have better way.
+        We'd go DEEP inside the urllib's private method to get raw headers
+
+        raw_headers example:
+        [('Cache-Control', 'private'),
+        ('Content-Length', '48234'),
+        ('Content-Type', 'text/html; Charset=utf-8'),
+        ('Server', 'Microsoft-IIS/8.5'),
+        ('Set-Cookie','BoardList=BoardID=Show; expires=Mon, 02-May-2016 16:00:00 GMT; path=/'),
+        ('Set-Cookie','aspsky=abcefgh; expires=Sun, 24-Apr-2016 16:00:00 GMT; path=/; HttpOnly'),
+        ('Set-Cookie', 'ASPSESSIONIDSCSSDSSQ=OGKMLAHDHBFDJCDMGBOAGOMJ; path=/'),
+        ('X-Powered-By', 'ASP.NET'),
+        ('Date', 'Tue, 26 Apr 2016 12:32:40 GMT')]
+
+        """
+        raw_headers = self.parse.remote_response.raw._original_response.headers._headers
+        header_cookies_string_list = []
+        for name, value in raw_headers:
+            if name.lower() != "set-cookie":
+                continue
+
+            if conf.my_scheme == "http://":
+                value = value.replace("Secure;", "")
+                value = value.replace(";Secure", ";")
+                value = value.replace("; Secure", ";")
+            if "httponly" in value.lower():
+                continue
+            if conf.aggressive_cookies_rewrite:
+                # 暴力cookie path重写, 把所有path都重写为 /
+                value = self.G.re_patterns["cookie_path"].sub("path=/;", value)
+            elif conf.aggressive_cookies_rewrite is not None:
+                # 重写HttpOnly Cookies的path到当前url下
+                # eg(/extdomains/a.foobar.com): path=/verify; -> path=/extdomains/a.foobar.com/verify
+
+                if self.parse.remote_domain not in conf.target_domain_alias:  # do not rewrite main domains
+                    value = self.G.re_patterns["cookie_path"].sub(
+                        "\g<prefix>=/extdomains/" + self.parse.remote_domain + "\g<path>", value
+                    )
+
+            header_cookies_string_list.append(value)
+
+        return header_cookies_string_list
 
     def response_cookie_rewrite(self, cookie_string):
-        pass
+        """
+        rewrite response cookie string's domain to `my_host_name`
+        :type cookie_string: str
+        """
+        cookie_string = self.G.re_patterns["cookie"].sub(
+            "domain=" + conf.my_host_name_with_port, cookie_string
+        )
+        return cookie_string
 
     def encode_mirror_url(
         self, remote_url: str, remote_domain: str = None, has_scheme: bool = True, escaped: bool = False
@@ -424,11 +400,10 @@ class ResponseRewriter:
         else:
             middle_part = ""
 
-        path_and_query = splited.path + ("?" + splited.query if splited.query else "")
-        fragment = splited.fragment if splited.fragment else ""
+        path_and_query = self.G.extract_path_and_query(unesc_remote_url)
 
-        mirror_url = urljoin(scheme_host, middle_part + "/", path_and_query.strip("/"))
-        mirror_url += "#" + fragment if fragment else ""
+        mirror_url = urljoin(scheme_host + middle_part + "/", path_and_query.strip("/"))
+        mirror_url += "#" + splited.fragment if splited.fragment else ""
 
         if escaped:
             mirror_url = esc_str(mirror_url)
@@ -564,21 +539,24 @@ class ResponseRewriter:
 
                 elif header_key_lower == "content-type":
                     # force add utf-8 to content-type if it is text
-                    if is_mime_represents_text(self.parse.mime) and "utf-8" not in self.parse.content_type:
+                    if (
+                        is_mime_represents_text(self.parse.mime, conf.text_like_mime_types)
+                        and "utf-8" not in self.parse.content_type
+                    ):
                         resp.headers[header_key] = self.parse.mime + "; charset=utf-8"
                     else:
                         resp.headers[header_key] = self.parse.remote_response.headers[header_key]
 
                 elif header_key_lower in ("access-control-allow-origin", "timing-allow-origin"):
-                    # if custom_allowed_origin is None:
-                    #     resp.headers[header_key] = myurl_prefix
-                    # elif custom_allowed_origin == "_*_":  # coverage: exclude
-                    #     _origin = (
-                    #         request.headers.get("origin") or request.headers.get("Origin") or myurl_prefix
-                    #     )
-                    #     resp.headers[header_key] = _origin
-                    # else:
-                    #     resp.headers[header_key] = custom_allowed_origin
+                    if conf.custom_allowed_origin is None:
+                        resp.headers[header_key] = conf.my_scheme_and_host
+                    elif conf.custom_allowed_origin == "_*_":  # coverage: exclude
+                        _origin = (
+                            request.headers.get("origin") or request.headers.get("Origin") or conf.my_scheme_and_host
+                        )
+                        resp.headers[header_key] = _origin
+                    else:
+                        resp.headers[header_key] = conf.custom_allowed_origin
                     pass
 
                 else:
@@ -594,24 +572,7 @@ class ResponseRewriter:
 
         return resp
 
-    def generate_our_response(self):
-        """
-        生成我们的响应
-        :rtype: Response
-        """
-        if self.parse.streame_our_response:
-            self.parse.time["req_time_body"] = 0
-            # 异步传输内容, 不进行任何重写, 返回一个生成器
-            content = self.iter_streamed_response_async()
-        else:
-            # 如果不是异步传输, 则(可能)进行重写
-            content, self.parse.time["req_time_body"] = self.response_content_rewrite()
-
-        # 创建基础的Response对象
-        resp = Response(content, status=self.parse.remote_response.status_code)
-        # rewrite remote response's headers
-        resp = self.rewrite_resp_headers(resp)
-
+    def add_extra_headers(self, resp: Response):
         # add extra headers
         if self.parse.time["req_time_header"] >= 0.00001:
             self.parse.set_extra_resp_header("X-Header-Req-Time", "%.4f" % self.parse.time["req_time_header"])
@@ -625,9 +586,33 @@ class ResponseRewriter:
         for k, v in self.parse.extra_resp_headers.items():
             resp.headers.set(k, v)
 
-        # set cookies
+        # add extra cookies
         for name, cookie_string in self.parse.extra_cookies.items():
             resp.headers.add("Set-Cookie", cookie_string)
+
+        return resp
+
+    def generate_our_response(self):
+        """
+        生成我们的响应
+        :rtype: Response
+        """
+        # parse remote reponse
+        self.parse_remote_response()
+
+        # process remote reponse
+        if self.parse.streame_our_response:
+            self.parse.time["req_time_body"] = 0
+            # 异步传输内容, 不进行任何重写, 返回一个生成器
+            content = self.iter_streamed_response_async()
+        else:
+            # 如果不是异步传输, 则(可能)进行重写
+            content, self.parse.time["req_time_body"] = self.response_content_rewrite()
+
+        # 创建基础的Response对象
+        resp = Response(content, status=self.parse.remote_response.status_code)
+        resp = self.rewrite_resp_headers(resp)
+        resp = self.add_extra_headers(resp)
 
         # dump request and response data to file
         if conf.developer_dump_all_files and not self.parse.streame_our_response:

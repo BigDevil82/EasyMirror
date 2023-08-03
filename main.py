@@ -1,8 +1,8 @@
-# from mirror_core.core import LeoMirror
+from mirror_core.core import LeoMirrorApp
 
-# mirror_app = LeoMirror()
+mirror_app = LeoMirrorApp()
 
-# mirror_app.run()
+mirror_app.run()
 
 # from utils.ColorfulPyPrint import ColorfulPrinter
 
@@ -15,11 +15,11 @@
 # cp.important_print("Hello World!", v=8)
 
 
-from configuration import Config
+# from configuration import Config
 
-user_confs = {"my_host_name": "foo.bar.com", "my_host_port": 80}
+# user_confs = {"my_host_name": "foo.bar.com", "my_host_port": 80}
 
-conf = Config("config.py", **user_confs)
-conf.help()
+# conf = Config("config.py", **user_confs)
+# conf.help()
 
 # print(conf)

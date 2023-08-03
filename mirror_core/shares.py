@@ -1,11 +1,15 @@
 import re
 import traceback
+from collections import Counter
+from urllib.parse import urlsplit
 
+from flask import request
 
-from threadlocal import ZmirrorThreadLocal
 from configuration import Config
 from utils.ColorfulPyPrint import ColorfulPrinter
+from utils.util import current_line_number, get_group
 
+from .threadlocal import ZmirrorThreadLocal
 
 conf = Config(conf_path="config.py")
 logger = ColorfulPrinter(conf.verbose_level)
@@ -20,6 +24,7 @@ class Shares:
     def __init__(self) -> None:
         self.logger = logger
         self.recent_domains = {}  # type: dict[str, bool]
+        self.conf = conf
 
         # do some preparation
         self.prepare()
@@ -78,11 +83,11 @@ class Shares:
         if conf.my_port is not None:
             REGEX_MY_HOST_NAME = (
                 r"(?:"
-                + re.escape(conf.my_host_name_no_port)
+                + re.escape(conf.my_host_name_with_port)
                 + REGEX_COLON
                 + re.escape(str(conf.my_port))
                 + r"|"
-                + re.escape(conf.my_host_name_no_port)
+                + re.escape(conf.my_host_name_with_port)
                 + r")"
             )
         else:
@@ -109,6 +114,37 @@ class Shares:
             # 右引号(可以是右括弧), 必须
             r"""(?P<quote_right>["')])(?P<right_suffix>\W)""",  # right quote  "'
             flags=re.IGNORECASE,
+        )
+
+        # 用于匹配响应文本中的url(不含路径和query param)的正则表达式
+        # 包含以下捕获组：
+        #     scheme: http(s):
+        #     scheme_slash: // or /
+        #     quote: " or '
+        #     domain: target.domain
+        #     suffix_slash: // or / or None
+
+        # 统计各个顶级域名(tld)出现的频率, 并且按照出现频率降序排列, 有助于提升正则效率
+        tld_freq = Counter(re.escape(x.split(".")[-1]) for x in conf.allowed_domains)
+        all_remote_tld = sorted(list(tld_freq.keys()), key=lambda tld: tld_freq[tld], reverse=True)
+        re_all_remote_tld = "(?:" + "|".join(all_remote_tld) + ")"
+
+        re_scheme = r"""(?:https?(?P<colon>{REGEX_COLON}))?""".format(
+            REGEX_COLON=REGEX_COLON
+        )  # http(s): or nothing(note the ? at the end)
+        re_scheme_slash = r"""(?P<scheme_slash>{SLASH})(?P=scheme_slash)""".format(SLASH=REGEX_SLASH)  # //
+        re_quote = r"""(?P<quote>{REGEX_QUOTE})""".format(REGEX_QUOTE=REGEX_QUOTE)
+        re_domain = r"""(?P<domain>([a-zA-Z0-9-]+\.){1,5}%s)\b""" % re_all_remote_tld
+        # explain: (?(name)yes-pattern|no-pattern)
+        #  if the group with given name matched, then use yes-pattern, else use no-pattern, and if no-pattern is omitted, then use empty string
+        re_suffix_slash = r"""(?P<suffix_slash>(?(scheme_slash)(?P=scheme_slash)|{SLASH}))?""".format(
+            SLASH=REGEX_SLASH
+        )  # suffix slash is optional(not the ? at the end)
+        # right quote (if we have left quote)
+        re_right_quote = r"""(?(quote)(?P=quote))"""
+
+        regex_basic_url_pattern: re.Pattern = re.compile(
+            f"(?:{re_scheme}{re_scheme_slash}|{re_quote}){re_domain}{re_suffix_slash}{re_right_quote}"
         )
 
         # Response Cookies Rewriter, see response_cookie_rewrite()
@@ -157,6 +193,7 @@ class Shares:
 
         # assemble these regex patterns into a dict
         self.re_patterns: dict[str, re.Pattern] = {
+            "basic_url": regex_basic_url_pattern,  # 用于匹配url的正则表达式, 不含路径和query param
             "url": regex_adv_url_pattern,
             "main_domain": regex_main_domain_pattern,
             "ext_domains": regex_extdomains_pattern,
@@ -169,6 +206,24 @@ class Shares:
             "SLASH": REGEX_SLASH,
             "QUOTE": REGEX_QUOTE,
         }
+
+    def extract_path_and_query(self, full_url=None, no_query=False):
+        """
+        Convert http://foo.bar.com/aaa/p.html?x=y to /aaa/p.html?x=y
+
+        Args:
+         - no_query: bool, if True, will not include query string
+         - full_url: str, the url to be processed, if None, will use current request url
+
+        return: path and query string(if need) of the url
+        """
+        if full_url is None:
+            full_url = request.url
+        split = urlsplit(full_url)
+        result = split.path or "/"
+        if not no_query and split.query:
+            result += "?" + split.query
+        return result
 
     def encoding_detect(self, byte_content: bytes):
         """
@@ -193,6 +248,72 @@ class Shares:
         #     return c_chardet(byte_content)["encoding"]
 
         return None
+
+    def is_target_domain_use_https(self, domain):
+        """请求目标域名时是否使用https"""
+        if conf.force_https_domains == "NONE" or conf.force_https_domains is None:
+            return False
+        if conf.force_https_domains == "ALL":
+            return True
+        if domain in conf.force_https_domains:
+            return True
+        else:
+            return False
+
+    def client_requests_text_rewrite(self, raw_text):
+        """
+        Rewrite proxy domain to origin domain, extdomains supported.
+        Also Support urlencoded url.
+        This usually used in rewriting request params
+
+        eg. http://foo.bar/extdomains/accounts.google.com to http://accounts.google.com
+        eg2. foo.bar/foobar to www.google.com/foobar
+        eg3. http%3a%2f%2fg.zju.tools%2fextdomains%2Faccounts.google.com%2f233
+                to http%3a%2f%2faccounts.google.com%2f233
+
+        :type raw_text: str
+        :rtype: str
+        """
+
+        def replace_to_real_domain(match_obj: re.Match):
+            scheme = get_group("scheme", match_obj)  # type: str
+            colon = match_obj.group("colon")  # type: str
+            scheme_slash = get_group("scheme_slash", match_obj)  # type: str
+            _is_https = bool(get_group("is_https", match_obj))  # type: bool
+            real_domain = match_obj.group("real_domain")  # type: str
+
+            result = ""
+            if scheme:
+                if "http" in scheme:
+                    if _is_https or self.is_target_domain_use_https(real_domain):
+                        result += "https" + colon
+                    else:
+                        result += "http" + colon
+
+                result += scheme_slash * 2
+
+            result += real_domain
+
+            return result
+
+        # 使用一个复杂的正则进行替换, 这次替换以后, 理论上所有 extdomains 都会被剔除
+        # 详见本文件顶部, regex_request_rewriter_extdomains 本体
+        replaced = self.re_patterns["ext_domains"].sub(replace_to_real_domain, raw_text)
+
+        if conf.developer_string_trace is not None and conf.developer_string_trace in replaced:
+            # debug用代码, 对正常运行无任何作用
+            logger.info(
+                "StringTrace: appears client_requests_text_rewrite, code line no. ", current_line_number()
+            )
+
+        # 正则替换掉单独的, 不含 /extdomains/ 的主域名
+        replaced = self.re_patterns["main_domain"].sub(conf.target_domain, replaced)
+
+        # 为了保险起见, 再进行一次裸的替换
+        replaced = replaced.replace(conf.my_host_name, conf.target_domain)
+
+        # logger.debug("ClientRequestedUrl: ", raw_text, "<- Has Been Rewrited To ->", replaced)
+        return replaced
 
 
 class Base:

@@ -209,11 +209,11 @@ def inject_content_head_last(html, content):
     return html[:head_end_pos] + content + html[head_end_pos:]
 
 
-def dump_zmirror_snapshot(parse, request, root, folder="error_dump", msg=None, our_response=None):
+def dump_zmirror_snapshot(parse, request, root="error_dump", msg=None, our_response=None):
     """
     dump当前状态到文件
-    :param folder: 文件夹名
-    :type folder: str
+    :param root: 文件夹名
+    :type root: str
     :param our_response: Flask返回对象, 可选
     :type our_response: Response
     :param msg: 额外的信息
@@ -223,8 +223,8 @@ def dump_zmirror_snapshot(parse, request, root, folder="error_dump", msg=None, o
     """
 
     try:
-        if not os.path.exists(root(folder)):
-            os.mkdir(root(folder))
+        if not os.path.exists(root(root)):
+            os.mkdir(root(root))
         _time_str = datetime.now().strftime("snapshot_%Y-%m-%d_%H-%M-%S")
 
         import config
@@ -241,7 +241,7 @@ def dump_zmirror_snapshot(parse, request, root, folder="error_dump", msg=None, o
             our_response.freeze()
         snapshot["OurResponse"] = our_response
 
-        dump_file_path = os.path.abspath(os.path.join(root(folder), _time_str + ".dump"))
+        dump_file_path = os.path.abspath(os.path.join(root(root), _time_str + ".dump"))
 
         with open(dump_file_path, "wb") as fp:
             pickle.dump(snapshot, fp, pickle.HIGHEST_PROTOCOL)

@@ -1,11 +1,11 @@
 import traceback
 
-from flask import make_response
+from flask import make_response, request
 
-import CONSTS
+from . import CONSTS
 from utils.util import *
-from shares import logger
-from threadlocal import ZmirrorThreadLocal
+from .shares import logger
+from .threadlocal import ZmirrorThreadLocal
 
 
 class PageGenerator:
@@ -41,7 +41,7 @@ class PageGenerator:
         if isinstance(errormsg, bytes):
             errormsg = errormsg.decode()
 
-        dump_file_path = dump_zmirror_snapshot(msg=errormsg)
+        dump_file_path = dump_zmirror_snapshot(self.parse, request, msg=errormsg)
 
         request_detail = ""
         for attrib in filter(lambda x: x[0] != "_" and x[-2:] != "__", dir(self.parse)):

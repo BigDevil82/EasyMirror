@@ -1,6 +1,7 @@
-import os
 import importlib
+import os
 from urllib.parse import urlsplit
+
 from utils.ColorfulPyPrint import ColorfulPrinter
 
 printer = ColorfulPrinter(2, 0)
@@ -89,8 +90,10 @@ class Config:
         self._is_use_proxy = False
         self._proxy_settings = None
 
+        self._custom_allowed_origin = None
         self._automatic_domains_whitelist_enable = True
         self._domains_whitelist_auto_add_glob_list = ()
+        self._aggressive_cookies_rewrite = None
 
         self._global_ua_white_name = "qiniu-imgstg-spider"
         self._spider_ua_white_list = ("qiniu", "cdn")
@@ -124,7 +127,7 @@ class Config:
         ]
 
         self._custom_text_rewriter_enable = False
-        self._text_like_mime_types = ("text", "json", "javascript", "xml")
+        self._text_like_mime_types = set(["text", "json", "javascript", "xml"])
         self._custom_inject_content = {}
 
         ######### developer settings #########
@@ -190,24 +193,34 @@ class Config:
     @property
     def my_host_name(self):
         """
-        Your domain name, eg: 'www.foobar.com[:80]' used to access your mirror site
+        Your domain name, eg: 'www.foobar.com' used to access your mirror site
         including port if have one, not include scheme
         """
-        return self._my_host_name
+        return self._my_host_name if not self._is_dev else "127.0.0.1"
 
     @my_host_name.setter
     def my_host_name(self, value):
-        if self._my_port is not None:
-            self._my_host_name = f"{value}:{self._my_port}"
-        else:
-            self._my_host_name = value
+        self._my_host_name = value
 
     @property
-    def my_host_name_no_port(self):
-        return self._my_host_name.split(":")[0]
+    def my_host_name_with_port(self):
+        if self._my_port == 80 and self._my_scheme == "http://":
+            return self._my_host_name
+        if self._my_port == 443 and self._my_scheme == "https://":
+            return self._my_host_name
+        return self._my_host_name + f":{self._my_port}"
 
     @property
     def my_port(self):
+        """
+        Your port, if use the default value(80 for http, 443 for https), please set it to None
+        otherwise please set your port (number)
+        an non-standard port MAY prevent the gfw's observe, but MAY also cause compatibility problems
+        """
+        if self._my_port is None and self._my_scheme == "http://":
+            return 80
+        if self._my_port is None and self._my_scheme == "https://":
+            return 443
         return self._my_port
 
     @my_port.setter
@@ -216,6 +229,9 @@ class Config:
 
     @property
     def my_scheme(self):
+        """
+        Your domain's scheme, 'http://' or 'https://', it affects the user.
+        """
         return self._my_scheme
 
     @my_scheme.setter
@@ -224,6 +240,9 @@ class Config:
 
     @property
     def my_scheme_escaped(self):
+        """
+        replace '/' with '\\\\/' in my_scheme
+        """
         return self._my_scheme.replace("/", r"\/")
 
     @property
@@ -239,14 +258,23 @@ class Config:
 
     @property
     def is_dev(self):
+        """
+        is in development mode, if True, will use 127.0.0.1 as my_host_name, and set verbose level to 3 if not specified
+        """
         return self._is_dev
 
     @is_dev.setter
     def is_dev(self, value):
-        self._is_dev = value
+        env_dev = os.environ.get("dev", None)
+        is_dev = value or (env_dev is not None and env_dev.lower() in ("1", "true", "yes"))
+        self._is_dev = is_dev
 
     @property
     def target_domain(self):
+        """
+        Target main domain
+        Notice: ONLY the main domain and external domains are ALLOWED to cross this proxy
+        """
         return self._target_domain
 
     @target_domain.setter
@@ -257,6 +285,9 @@ class Config:
 
     @property
     def target_scheme(self):
+        """
+        Target domain's scheme, 'http://' or 'https://', it affects the server only.
+        """
         return self._target_scheme
 
     @target_scheme.setter
@@ -265,6 +296,11 @@ class Config:
 
     @property
     def external_domains(self):
+        """
+        domain(s) also included in the proxyzone, mostly are the main domain's static file domains or sub domains
+        tips: you can find a website's external domains by using the developer tools of your browser,
+        # it will log all network traffics for you
+        """
         return self._external_domains
 
     @external_domains.setter
@@ -278,15 +314,23 @@ class Config:
 
     @property
     def target_domain_alias(self):
+        """
+        these domains would be regarded as the `target_domain`, and do the same process
+        eg: kernel.org is the same of www.kernel.org format: ('kernel.org',)
+        """
         return self._target_domain_alias
 
     @target_domain_alias.setter
     def target_domain_alias(self, value):
         value = [] if value is None else value
-        self._target_domain_alias = value.append(self.target_domain)
+        value.append(self.target_domain)
+        self._target_domain_alias = value
 
     @property
     def allowed_domains(self):
+        """
+        all allowed domains including target_domain, external_domains and target_domain_alias
+        """
         if len(self._allowed_domains) != 0:
             return self._allowed_domains
         else:
@@ -295,9 +339,13 @@ class Config:
                 self._allowed_domains.add(urlsplit("http://" + _domain).hostname)
             for _domain in self.target_domain_alias:
                 self._allowed_domains.add(_domain)
+            return self._allowed_domains
 
     @property
     def force_https_domains(self):
+        """
+        'ALL' for all, 'NONE' for none(case sensitive), ('foo.com','bar.com','www.blah.com') for custom
+        """
         return self._force_https_domains
 
     @force_https_domains.setter
@@ -306,6 +354,11 @@ class Config:
 
     @property
     def verbose_level(self):
+        """
+        Verbose level (0~4) 0:important and error 1:warning 2:info  3/4:debug. Default is 3 (for first time runner)
+        """
+        if self._verbose_level is None and self._is_dev:
+            return 3
         return self._verbose_level
 
     @verbose_level.setter
@@ -322,6 +375,11 @@ class Config:
 
     @property
     def builtin_server_debug(self):
+        """
+        If you want to use the builtin server to listen Internet (NOT recommend)
+        please modify the following configs
+        set built_in_server_host='0.0.0.0' and built_in_server_debug=False
+        """
         return self._builtin_server_debug
 
     @builtin_server_debug.setter
@@ -330,6 +388,12 @@ class Config:
 
     @property
     def builtin_server_extra_options(self):
+        """
+        other params which will be passed to flask builtin server
+        please see :func:`flask.client.Flask.fun`
+        and :func:`werkzeug.serving.run_simple` for more information
+        eg: {"processes":4, "hostname":"localhost"}
+        """
         return self._builtin_server_extra_options
 
     @builtin_server_extra_options.setter
@@ -338,6 +402,11 @@ class Config:
 
     @property
     def is_use_proxy(self):
+        """
+        Global proxy option, True or False (case sensitive)
+        Tip: If you want to make an GOOGLE mirror in China, you need an foreign proxy.
+        However, if you run this script in foreign server, which can access google directly, set it to False
+        """
         return self._is_use_proxy
 
     @is_use_proxy.setter
@@ -346,6 +415,10 @@ class Config:
 
     @property
     def proxy_settings(self):
+        """
+        If is_use_proxy = False, the following setting would NOT have any effect
+        DO NOT support socks4/5 proxy. If you want to use socks proxy, please use Privoxy to convert them to http(s) proxy.
+        """
         return self._proxy_settings
 
     @proxy_settings.setter
@@ -353,7 +426,24 @@ class Config:
         self._proxy_settings = value
 
     @property
+    def custom_allowed_origin(self):
+        return self._custom_allowed_origin
+
+    @custom_allowed_origin.setter
+    def custom_allowed_origin(self, value):
+        self._custom_allowed_origin = value
+
+    @property
     def automatic_domains_whitelist_enable(self):
+        """
+        Automatic Domains Whitelist
+        by given wild match domains (glob syntax, '*.example.com'), if we got domains match these cases,
+        it would be automatically added to the `external_domains`
+        # However, before you restart your server, you should check the 'automatic_domains_whitelist.log' file,
+        and manually add domains to the config, or it would not work after you restart your server
+        You CANNOT relay on the automatic whitelist, because the basic (but important) rewrite require specified domains to work.
+        For More Supported Pattern Please See: https://docs.python.org/3/library/fnmatch.html#module-fnmatch
+        """
         return self._automatic_domains_whitelist_enable
 
     @automatic_domains_whitelist_enable.setter
@@ -369,11 +459,29 @@ class Config:
         self._domains_whitelist_auto_add_glob_list = value
 
     @property
+    def aggressive_cookies_rewrite(self):
+        return self._aggressive_cookies_rewrite
+
+    @aggressive_cookies_rewrite.setter
+    def aggressive_cookies_rewrite(self, value):
+        self._aggressive_cookies_rewrite = value
+
+    @property
     def global_ua_white_name(self):
+        """
+        If client's ua CONTAINS this, it's access will be granted.Only one value allowed.
+        this white name also affects any other client filter (Human/IP verification, etc..)
+        Please don't use this if you don't use filters.
+        """
         return self._global_ua_white_name
 
     @global_ua_white_name.setter
     def global_ua_white_name(self, value):
+        """
+        If client's ua CONTAINS this, it's access will be granted.Only one value allowed.
+        this white name also affects any other client filter (Human/IP verification, etc..)
+        Please don't use this if you don't use filters.
+        """
         self._global_ua_white_name = value
 
     @property
@@ -386,6 +494,11 @@ class Config:
 
     @property
     def force_decode_with_charsets(self):
+        """
+        for some modern websites (google/wiki, etc), we can assume it well always use utf-8 encoding.
+        or for some old-styled sites, we could also force the program to use gbk encoding (just for example)
+        this should reduce the content encoding detect time.
+        """
         return self._force_decode_with_charsets
 
     @force_decode_with_charsets.setter
@@ -394,6 +507,10 @@ class Config:
 
     @property
     def possible_charsets(self):
+        """
+        program will test these charsets one by one, if `force_decode_remote_using_encode` is None
+        this will be helpful to solve Chinese GBK issues
+        """
         return self._possible_charsets
 
     @possible_charsets.setter
@@ -402,6 +519,9 @@ class Config:
 
     @property
     def connection_keep_alive_enable(self):
+        """
+        Keep-Alive Per domain
+        """
         return self._connection_keep_alive_enable
 
     @connection_keep_alive_enable.setter
@@ -410,6 +530,10 @@ class Config:
 
     @property
     def local_cache_enable(self):
+        """
+        Cache remote static files to your local storage. And access them directly from local storge if necessary.
+        an 304 response support is implanted inside
+        """
         return self._local_cache_enable
 
     @local_cache_enable.setter
@@ -418,6 +542,13 @@ class Config:
 
     @property
     def stream_transfer_enable(self):
+        """
+        We can transfer some content (eg:video) in stream mode
+        in non-stream mode, our server have to receive all remote response first, then send it to user
+        However, in stream mode, we would receive and send data piece-by-piece (small pieces)
+        Notice: local cache would not be available for stream content, please don't add image to stream list
+        IMPORTANT: NEVER ADD TEXT-LIKE CONTENT TYPE TO STREAM
+        """
         return self._stream_transfer_enable
 
     @stream_transfer_enable.setter
@@ -426,6 +557,9 @@ class Config:
 
     @property
     def stream_buffer_size(self):
+        """
+        streamed content fetch size (per package)
+        """
         return self._stream_buffer_size
 
     @stream_buffer_size.setter
@@ -434,6 +568,9 @@ class Config:
 
     @property
     def stream_transfer_async_preload_max_packages_size(self):
+        """
+        streamed content async preload -- max preload packages number
+        """
         return self._stream_transfer_async_preload_max_packages_size
 
     @stream_transfer_async_preload_max_packages_size.setter
@@ -442,6 +579,9 @@ class Config:
 
     @property
     def cron_task_enable(self):
+        """
+        Cron Tasks, if you really know what you are doing, please do not disable this option
+        """
         return self._cron_task_enable
 
     @cron_task_enable.setter
@@ -450,6 +590,10 @@ class Config:
 
     @property
     def cron_task_list(self):
+        """
+        If you want to add your own cron tasks, please create the function in 'custom_func.py', and add it's name in `target`
+        minimum task delay is 3 minutes (180 seconds), any delay that less than 3 minutes would be regarded as 3 minutes
+        """
         return self._cron_task_list
 
     @cron_task_list.setter
@@ -458,6 +602,13 @@ class Config:
 
     @property
     def custom_text_rewriter_enable(self):
+        """
+        You can do some custom modifications/rewrites to the response content.
+        # If enabled, every remote text response (html/css/js...) will be passed to your own rewrite function first,
+        custom rewrite would be applied BEFORE any builtin content rewrites
+        so, the response passed to your function is exactly the same to the remote server's response.
+        You need to write your own
+        """
         return self._custom_text_rewriter_enable
 
     @custom_text_rewriter_enable.setter
@@ -466,14 +617,23 @@ class Config:
 
     @property
     def text_like_mime_types(self):
-        return self._text_like_mime_types
+        """
+        If mime contains any of these keywords, it would be regarded as text
+        some websites(such as twitter), would send some strange mime which also represent txt ('x-mpegurl')
+        in these cases, you can add them here
+        default value: ("text", "json", "javascript", "xml")
+        """
+        return tuple(self._text_like_mime_types)
 
     @text_like_mime_types.setter
     def text_like_mime_types(self, value):
-        self._text_like_mime_types = value
+        self._text_like_mime_types = self._text_like_mime_types.union(set(value))
 
     @property
     def custom_inject_content(self):
+        """
+        inject custom content to the html reponse
+        """
         return self._custom_inject_content
 
     @custom_inject_content.setter
@@ -482,6 +642,9 @@ class Config:
 
     @property
     def developer_string_trace(self):
+        """
+        for development diagnose, if not None, will track string in code execution
+        """
         return self._developer_string_trace
 
     @developer_string_trace.setter
@@ -490,6 +653,9 @@ class Config:
 
     @property
     def developer_dump_all_files(self):
+        """
+        dump all request and reponse data to local disk
+        """
         return self._developer_dump_all_files
 
     @developer_dump_all_files.setter
@@ -498,6 +664,9 @@ class Config:
 
     @property
     def developer_disable_ssrf_check(self):
+        """
+        temporarily disable ssrf check
+        """
         return self._developer_disable_ssrf_check
 
     @developer_disable_ssrf_check.setter
@@ -506,6 +675,9 @@ class Config:
 
     @property
     def developer_disable_ssl_verify(self):
+        """
+        temporarily disable ssl verify
+        """
         return self._developer_disable_ssl_verify
 
     @developer_disable_ssl_verify.setter

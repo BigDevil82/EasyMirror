@@ -11,10 +11,10 @@ my_host_name = "127.0.0.1"
 # Your port, if use the default value(80 for http, 443 for https), please set it to None
 #   otherwise please set your port (number)
 #   an non-standard port MAY prevent the gfw's observe, but MAY also cause compatibility problems
-my_port = 80
+my_host_port = 3000
 
 # Your domain's scheme, 'http://' or 'https://', it affects the user.
-my_scheme = "http://"
+my_host_scheme = "http://"
 
 # if DEV:
 #     my_host_name = "127.0.0.1"
@@ -32,8 +32,7 @@ target_scheme = "https://"
 # it will log all network traffics for you
 external_domains = (
     "eapps.dingtalkcloud.com",
-    "jzems.oss-cn-hangzhou.aliyuncs.com",
-    "signalrdt.jzsoft.cn"
+    "jzems.oss-cn-hangzhou.aliyuncs.com"
     # actually, the kernel.org has many sub-domains, but we just add one of them for example
     # the following `Automatic Domains Whitelist` would detect and add the others automatically
     #
@@ -58,7 +57,7 @@ force_https_domains = "NONE"
 # 自动域名添加白名单功能并不能取代 `external_domains` 中一个个指定的域名,
 #   因为基础重写(很重要)不支持使用通配符(否则会带来10倍以上的性能下降).
 # 如果需要使用 * 以外的通配符, 请查看 https://docs.python.org/3/library/fnmatch.html#module-fnmatch 这里的的说明
-automatic_domains_whitelist_enable = True
+enable_automatic_domains_whitelist = True
 # example:
 # domains_whitelist_auto_add_glob_list = ('*.google.com', '*.gstatic.com', '*.google.com.hk')
 domains_whitelist_auto_add_glob_list = ("*.dingtalkcloud.com",)
@@ -71,7 +70,7 @@ is_use_proxy = False
 
 # If is_use_proxy = False, the following setting would NOT have any effect
 # DO NOT support socks4/5 proxy. If you want to use socks proxy, please use Privoxy to convert them to http(s) proxy.
-proxy_settings = dict(
+requests_proxies = dict(
     http="http://127.0.0.1:8123",
     https="https://127.0.0.1:8123",
 )
@@ -79,7 +78,7 @@ proxy_settings = dict(
 # ############## Output Settings ##############
 # Verbose level (0~4) 0:important and error 1:info 2:warning 3/4:debug. Default is 3 (for first time runner)
 # 注意: 在正式部署到服务器后, 请把这个值修改为2, 如果设置为3或4,会产生非常大量的debug输出
-verbose_level = 3
+verbose_level = 2
 
 # #####################################################
 # ################# ADVANCED Settings #################
@@ -92,7 +91,7 @@ verbose_level = 3
 #       format: ('kernel.org',)
 # 列在这里这些域名会被认为是target_domain, 并做同样的处理和修改
 # 可以添加www域名(主站使用裸域名)或者裸域名(主站使用www域名)到这里
-target_domain_alias = []
+domains_alias_to_target_domain = []
 
 # ############## Misc Settings ##############
 # If client's ua CONTAINS this, it's access will be granted.Only one value allowed.
@@ -111,14 +110,14 @@ global_ua_white_name = "qiniu-imgstg-spider"
 #   对于一些古老的站点, 强制使用如gbk之类的编码进行解码也是可以的
 # set None to disable it, 'utf-8' for utf-8
 # 设置为 None 表示关闭显式编码指定, 'utf-8' 代表utf-8
-force_decode_with_charsets = None
+force_decode_remote_using_encode = None
 
 # v0.23.0+ program will test these charsets one by one, if `force_decode_remote_using_encode` is None
 # this will be helpful to solve Chinese GBK issues
 possible_charsets = ["utf-8", "GBK"]
 
 # v0.29.1+ Keep-Alive Per domain
-connection_keep_alive_enable = True
+enable_connection_keep_alive = True
 
 # ############## Builtin server ##############
 # v0.23.1+ configs for flask builtin server (only affect when directly run wsgi.py)
@@ -126,8 +125,8 @@ connection_keep_alive_enable = True
 # If you want to use the builtin server to listen Internet (NOT recommend)
 # please modify the following configs
 # set built_in_server_host='0.0.0.0' and built_in_server_debug=False
-builtin_server_host = "0.0.0.0"
-builtin_server_debug = False
+built_in_server_host = "0.0.0.0"
+built_in_server_debug = False
 
 # if DEV:
 #     built_in_server_host = "127.0.0.1"
@@ -137,7 +136,7 @@ builtin_server_debug = False
 # please see :func:`flask.client.Flask.fun`
 # and :func:`werkzeug.serving.run_simple` for more information
 # eg: {"processes":4, "hostname":"localhost"}
-builtin_server_extra_options = {}
+built_in_server_extra_params = {}
 
 # ############## Cache Settings ##############
 # Cache remote static files to your local storage. And access them directly from local storge if necessary.
@@ -183,61 +182,61 @@ custom_inject_content = {
 # !!! 注意: 上面的示例会在此被清空 !!!
 del custom_inject_content
 custom_inject_content = {}
-# custom_inject_content = {
-#     "head_first": [],
-#     "head_last": [
-#         {
-#             "content": r"""<script>
-#         document.addEventListener("DOMContentLoaded", function() {
-#         var help = document.getElementById("liTemp2");
-#         if (help) {
-#             help.remove();
-#             console.log("help removed");
-#         }
-#         });</script>""",
-#             "url_regex": r"^jzcrm\.eapps\.dingtalkcloud\.com/workbench/\?\d+$",
-#         },
-#         {
-#             "content": r"""<script>
-#         document.addEventListener("DOMContentLoaded", function() {
-#             var scancode = document.getElementById("login_s");
-#             if (scancode) {
-#                 scancode.remove();
-#                 console.log("scancode deleted");
-#             }
-#             else{
-#                 console.log("scancode not found");
-#             }
-#             var bgImg = document.querySelector("\#form1 > div.signinpanel > div.item");
-#             if(bgImg){
-#                 bgImg.style.background = "url('/static/bg.jpg')";
-#                 bgImg.style.backgroundSize="auto 100%";
-#                 bgImg.style.backgroundRepeat= "no-repeat";
-#                 bgImg.style.backgroundPosition= "center center";
-#             }
-#             var login_p = document.getElementById("login_p")
-#             if(login_p){
-#                 login_p.click();
-#             }
-#             else{
-#                 console.log("login_p not found");
-#             }
-#             var mask = document.querySelector(".loginbg");
-#             if(mask){
-#                 mask.style.height = "550px";
-#                 mask.style.top = "calc(50% - 295px)";
-#             }
-#             var logo = document.getElementById("img_logo");
-#             if(logo){
-#                 logo.remove();
-#             } else {
-#                 console.log("logo not found");
-#             }
-#         });</script>""",
-#             "url_regex": r"^jzcrm\.eapps\.dingtalkcloud\.com/manage/\?entno",
-#         },
-#     ],
-# }
+custom_inject_content = {
+    "head_first": [],
+    "head_last": [
+        {
+            "content": r"""<script>
+        document.addEventListener("DOMContentLoaded", function() {
+        var help = document.getElementById("liTemp2");
+        if (help) {
+            help.remove();
+            console.log("help removed");
+        }
+        });</script>""",
+            "url_regex": r"^jzcrm\.eapps\.dingtalkcloud\.com/workbench/\?\d+$",
+        },
+        {
+            "content": r"""<script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var scancode = document.getElementById("login_s");
+            if (scancode) {
+                scancode.remove();
+                console.log("scancode deleted");
+            }
+            else{
+                console.log("scancode not found");
+            }
+            var bgImg = document.querySelector("\#form1 > div.signinpanel > div.item");
+            if(bgImg){
+                bgImg.style.background = "url('/static/bg.jpg')";
+                bgImg.style.backgroundSize="auto 100%";
+                bgImg.style.backgroundRepeat= "no-repeat";
+                bgImg.style.backgroundPosition= "center center";
+            }
+            var login_p = document.getElementById("login_p")
+            if(login_p){
+                login_p.click();
+            }
+            else{
+                console.log("login_p not found");
+            }
+            var mask = document.querySelector(".loginbg");
+            if(mask){
+                mask.style.height = "550px";
+                mask.style.top = "calc(50% - 295px)";
+            }
+            var logo = document.getElementById("img_logo");
+            if(logo){
+                logo.remove();
+            } else {
+                console.log("logo not found");
+            }
+        });</script>""",
+            "url_regex": r"^jzcrm\.eapps\.dingtalkcloud\.com/manage/\?entno",
+        },
+    ],
+}
 
 # ############## Search Engine Deny ##############
 # If turns to True, will send an 403 if user-agent contains 'spider' or 'bot'
@@ -246,7 +245,7 @@ custom_inject_content = {}
 #   不用担心会ban掉正常用户, 目前已知的所有正常浏览器, ua中都不包含这两个关键词
 # 建议开启(默认开启), 可以避免搜索引擎爬虫的访问
 # default: True
-# is_deny_spiders_by_403 = True
+is_deny_spiders_by_403 = True
 
 # However, if spider's ua contains one of these strings, it will be allowed
 # Because some CDN provider's resource fetcher's UA contains spider string. You can let them access
@@ -264,73 +263,73 @@ custom_inject_content = {}
 # default: ('qiniu', 'cdn')
 spider_ua_white_list = ("qiniu", "cdn")
 
-# # ############## Human/IP verification ##############
-# # We could disallow untrusted IP's access by asking users some questions which only your people knew the answer
-# # Of course, this can also deny Chinese GFW's access
-# # If an user passed this verification, then his/her IP would be added to whitelist
-# # You can also acquire some identity information from users.
-# human_ip_verification_enabled = False
+# ############## Human/IP verification ##############
+# We could disallow untrusted IP's access by asking users some questions which only your people knew the answer
+# Of course, this can also deny Chinese GFW's access
+# If an user passed this verification, then his/her IP would be added to whitelist
+# You can also acquire some identity information from users.
+human_ip_verification_enabled = False
 
-# # can be html
-# human_ip_verification_description = r"""本站仅允许内部人员访问, 如果您是内部人员, 请您回答以下问题
-# This site ONLY allow limited people to access, please answer the following question(s).
-# """
+# can be html
+human_ip_verification_description = r"""本站仅允许内部人员访问, 如果您是内部人员, 请您回答以下问题
+This site ONLY allow limited people to access, please answer the following question(s).
+"""
 
-# human_ip_verification_default_whitelist_networks = (
-#     "127.0.0.1",  # localhost
-#     "183.157.0.0/16",  # Zhejiang University
-#     # Zhejiang China Mobile
-#     # '211.140.0.0/16',
-#     # '218.205.0.0/16',
-#     # '211.138.112.0/19',
-#     # '112.17.230.0/19',
-# )
+human_ip_verification_default_whitelist_networks = (
+    "127.0.0.1",  # localhost
+    "183.157.0.0/16",  # Zhejiang University
+    # Zhejiang China Mobile
+    # '211.140.0.0/16',
+    # '218.205.0.0/16',
+    # '211.138.112.0/19',
+    # '112.17.230.0/19',
+)
 
-# human_ip_verification_title = "本网站只有内部人员才可以访问 | This site was only available for our members"
-# human_ip_verification_success_msg = "Verify Success! \n You will not be asked again for 30 days"
+human_ip_verification_title = "本网站只有内部人员才可以访问 | This site was only available for our members"
+human_ip_verification_success_msg = "Verify Success! \n You will not be asked again for 30 days"
 
-# # Please make sure you have write permission.
-# human_ip_verification_whitelist_file_path = "ip_whitelist.txt"
-# human_ip_verification_whitelist_log = "ip_whitelist.log"
+# Please make sure you have write permission.
+human_ip_verification_whitelist_file_path = "ip_whitelist.txt"
+human_ip_verification_whitelist_log = "ip_whitelist.log"
 
-# # salt, please CHANGE it
-# human_ip_verification_answers_hash_str = "AploiumLoveLuciazForever"
+# salt, please CHANGE it
+human_ip_verification_answers_hash_str = "AploiumLoveLuciazForever"
 
-# # questions and answer that users from non-permitted ip should answer. Can have several questions
-# human_ip_verification_questions = (
-#     ("Please write your question here", "CorrectAnswer", "Placeholder (Optional)"),
-#     # ('Another question', 'AnotherAnswer', 'YourPlaceholder (Optional)'),
-#     # ('最好是一些只有内部人员才知道答案的问题, 比如说 "英译中:zdlgmygdwg"', '[略]'),
-#     # ('能被轻易百度到答案的问题是很不好的,比如:浙江大学的校长是谁', '竺可桢'),
-# )
+# questions and answer that users from non-permitted ip should answer. Can have several questions
+human_ip_verification_questions = (
+    ("Please write your question here", "CorrectAnswer", "Placeholder (Optional)"),
+    # ('Another question', 'AnotherAnswer', 'YourPlaceholder (Optional)'),
+    # ('最好是一些只有内部人员才知道答案的问题, 比如说 "英译中:zdlgmygdwg"', '[略]'),
+    # ('能被轻易百度到答案的问题是很不好的,比如:浙江大学的校长是谁', '竺可桢'),
+)
 
-# # v0.21.8+ if answer any of questions above, access would be granted
-# human_ip_verification_answer_any_one_questions_is_ok = False
+# v0.21.8+ if answer any of questions above, access would be granted
+human_ip_verification_answer_any_one_questions_is_ok = False
 
-# # user's identity information that should given. Would be logged in to log file.
-# human_ip_verification_identity_record = (
-#     # question_description,                 question_internal_name,  form_input_type)
-#     ("Please input your student/teacher ID number", "student_id", "text"),
-#     ("Please input your student/teacher password", "password", "password"),
-#     # ("请输入您的学号或工号", "student_id"),
-# )
+# user's identity information that should given. Would be logged in to log file.
+human_ip_verification_identity_record = (
+    # question_description,                 question_internal_name,  form_input_type)
+    ("Please input your student/teacher ID number", "student_id", "text"),
+    ("Please input your student/teacher password", "password", "password"),
+    # ("请输入您的学号或工号", "student_id"),
+)
 
-# # If set to True, will use the custom_identity_verify() function to verify user's input identity.
-# # And dict will be passed to that function
-# # This function is more simple but basic than the following `enable_custom_access_cookie_generate_and_verify`
-# #   you could not specify the cookie, and do advanced verification(eg: time control)
-# # ### IT IS AN EXPERT SETTING THAT YOU HAVE TO WRITE SOME YOUR OWN PYTHON CODES ###
-# # ### 这是一项高级功能, 你需要写自己的验证函数才行 ###
-# identity_verify_required = False
+# If set to True, will use the custom_identity_verify() function to verify user's input identity.
+# And dict will be passed to that function
+# This function is more simple but basic than the following `enable_custom_access_cookie_generate_and_verify`
+#   you could not specify the cookie, and do advanced verification(eg: time control)
+# ### IT IS AN EXPERT SETTING THAT YOU HAVE TO WRITE SOME YOUR OWN PYTHON CODES ###
+# ### 这是一项高级功能, 你需要写自己的验证函数才行 ###
+identity_verify_required = False
 
-# # If sets to True, would add an cookie to verified user, automatically whitelist them even if they have different ip
-# #   otherwise, only users from the `human_ip_verification_default_whitelist_networks` ip can access
-# human_ip_verification_whitelist_from_cookies = True
-# human_ip_verification_whitelist_cookies_expires_days = 30
+# If sets to True, would add an cookie to verified user, automatically whitelist them even if they have different ip
+#   otherwise, only users from the `human_ip_verification_default_whitelist_networks` ip can access
+human_ip_verification_whitelist_from_cookies = True
+human_ip_verification_whitelist_cookies_expires_days = 30
 
-# # If set to True, an valid cookie is required, IP white list would be ignored.
-# # If set to False, identity will not be verified but just logged to file
-# must_verify_cookies = False
+# If set to True, an valid cookie is required, IP white list would be ignored.
+# If set to False, identity will not be verified but just logged to file
+must_verify_cookies = False
 
 # v0.20.9+ Generate and verify access cookie using self-defined function
 #   If this is set to True, the `human_ip_verification_whitelist_from_cookies` would be disabled automatically
@@ -351,7 +350,7 @@ spider_ua_white_list = ("qiniu", "cdn")
 #   若 custom_generate_access_cookie() 的返回值是None, 那么用户的访问就会被拒绝
 #   与 `identity_verify_required` 的区别是, 这个更加复杂, 但是也支持更加高级的功能
 #       如果打开了这个, 建议把 `identity_verify_required` 关掉(尽管两者可以共存, 但是没必要)
-# enable_custom_access_cookie_generate_and_verify = False
+enable_custom_access_cookie_generate_and_verify = False
 
 # ############## Custom URL Redirect ##############
 # If enabled, server will use an 307 to redirect from the source to the target
@@ -363,24 +362,24 @@ spider_ua_white_list = ("qiniu", "cdn")
 # 2.It can also do url shorten jobs, but because it only rewrite url PATH, you cannot change the url's domain.
 #     eg1: http://foo.com/wiki  --->  http://foo.com/extdomains/zh.wikipedia.org/
 #     eg2: http://foo.com/scholar  --->  http://foo.com/extdomains/https-scholar.google.com/
-# url_custom_redirect_enable = False
+url_custom_redirect_enable = False
 
 # Only applies to url PATH, other parts remains untouched
 # It's an plain text list. Less function but higher performance, have higher priority than regex rules
 # eg: "http://foo.com/im/path.php?q=a#mark" , in this url, "/im/path.php" this is PATH
 #
 # Dependency: url_custom_redirect_enable == True
-# url_custom_redirect_list = {
-#     # v0.18.0+ because the new sites isolation mechanism, these redirect are NO LONGER NEEDED FOR WIKIPEDIA
-#     # now, they are for sample only.
-#     #
-#     # This example is to fix search bugs(in wiki) when you put google together with zh.wikipedia.org in one mirror.
-#     # '/w/load.php': '/extdomains/https-zh.wikipedia.org/w/load.php',
-#     # '/w/index.php': '/extdomains/https-zh.wikipedia.org/w/index.php',
-#     # '/w/api.php': '/extdomains/https-zh.wikipedia.org/w/api.php',
-#     # This example acts as an tinyurl program
-#     "/wiki": "/extdomains/https-zh.wikipedia.org/",
-# }
+url_custom_redirect_list = {
+    # v0.18.0+ because the new sites isolation mechanism, these redirect are NO LONGER NEEDED FOR WIKIPEDIA
+    # now, they are for sample only.
+    #
+    # This example is to fix search bugs(in wiki) when you put google together with zh.wikipedia.org in one mirror.
+    # '/w/load.php': '/extdomains/https-zh.wikipedia.org/w/load.php',
+    # '/w/index.php': '/extdomains/https-zh.wikipedia.org/w/index.php',
+    # '/w/api.php': '/extdomains/https-zh.wikipedia.org/w/api.php',
+    # This example acts as an tinyurl program
+    "/wiki": "/extdomains/https-zh.wikipedia.org/",
+}
 
 # If you want more complicated regex redirect, please add them in this dict.
 # If url FULLY MATCH the first regex, the second regex for re.sub  will be applied
@@ -388,24 +387,24 @@ spider_ua_white_list = ("qiniu", "cdn")
 # Please see https://docs.python.org/3.5/library/re.html#re.sub for more rules
 #
 # Dependency: url_custom_redirect_enable == True
-# url_custom_redirect_regex = (
-#     # v0.18.0+ because the new sites isolation mechanism, these redirect are NO LONGER NEEDED FOR WIKIPEDIA
-#     # now, they are for sample only.
-#     #
-#     # This example fix mobile wikipedia's search bug
-#     # will redirect /wiki/Some_wiki_page to /extdomains/https-zh.m.wikipedia.org/wiki/Some_wiki_page
-#     # (r'^/wiki/(?P<name>.*)$', '/extdomains/https-zh.m.wikipedia.org/wiki/\g<name>'),
-#     # (r'^/wiki/(?P<name>.*)', '/extdomains/https-zh.m.wikipedia.org//wiki/\g<name>'),
-# )
+url_custom_redirect_regex = (
+    # v0.18.0+ because the new sites isolation mechanism, these redirect are NO LONGER NEEDED FOR WIKIPEDIA
+    # now, they are for sample only.
+    #
+    # This example fix mobile wikipedia's search bug
+    # will redirect /wiki/Some_wiki_page to /extdomains/https-zh.m.wikipedia.org/wiki/Some_wiki_page
+    # (r'^/wiki/(?P<name>.*)$', '/extdomains/https-zh.m.wikipedia.org/wiki/\g<name>'),
+    # (r'^/wiki/(?P<name>.*)', '/extdomains/https-zh.m.wikipedia.org//wiki/\g<name>'),
+)
 
 # v0.20.3+ while normal redirect send 307 back to browser, shadow redirect don't actually change the url,
 #   but change the url only inside the program.
 # 正常的重定向会通过307来真正地修改url, 但是隐性重定向不会修改浏览器的url, 而是只在本程序内部进行url的修改
 #
 # Dependency: url_custom_redirect_enable == True
-# shadow_url_redirect_regex = (
-#     # (r'^/ext_tw_video/(?P<ext>.*)', r'/extdomains/https-video.twimg.com/ext_tw_video/\g<ext>'),
-# )
+shadow_url_redirect_regex = (
+    # (r'^/ext_tw_video/(?P<ext>.*)', r'/extdomains/https-video.twimg.com/ext_tw_video/\g<ext>'),
+)
 
 # v0.20.6+ plain replace domain alias
 # before any builtin rewrite(but after custom_text_rewrite), program will do a plain text replace,
@@ -419,10 +418,10 @@ spider_ua_white_list = ("qiniu", "cdn")
 # 注意: 如果你需要同时替换二级域名和根域名, 请把二级域名放在根域名前面, 因为二级域名在替换时也会被根域名匹配到
 #
 # Dependency: url_custom_redirect_enable == True
-# plain_replace_domain_alias = [
-#     # ('www.twitter.com', 'twitter.your-website-mirror.com'),
-#     # ('www.youtube.com', 'youtube.your-website-mirror.com'),
-# ]
+plain_replace_domain_alias = [
+    # ('www.twitter.com', 'twitter.your-website-mirror.com'),
+    # ('www.youtube.com', 'youtube.your-website-mirror.com'),
+]
 
 # ############## Individual Sites Isolation ##############
 # Referer based individual sites isolation (v0.18.0+)
@@ -444,12 +443,12 @@ spider_ua_white_list = ("qiniu", "cdn")
 #   但是对于某些逻辑特别复杂的站, 比如twitterPC-twitterMobile, 即使使用隔离机制, 仍然会导致子站不正常,
 #   这时候请用两个域名分别承载两个网站. 如 t.foo.com 是twitterPC mt.foo.com 是twitterMobile
 #
-# enable_individual_sites_isolation = False
+enable_individual_sites_isolation = False
 
-# # Isolated domains (sample) (v0.18.0+)
-# # Only sites contained in the `external_domains` options, would have effect.
-# # 只有包含在`external_domains`选项中的域名才会生效
-# isolated_domains = {"zh.m.wikipedia.org", "zh.wikipedia.org"}
+# Isolated domains (sample) (v0.18.0+)
+# Only sites contained in the `external_domains` options, would have effect.
+# 只有包含在`external_domains`选项中的域名才会生效
+isolated_domains = {"zh.m.wikipedia.org", "zh.wikipedia.org"}
 
 # ############## Stream Content Transfer ##############
 # v0.20.1+ We can transfer some content (eg:video) in stream mode
@@ -464,25 +463,25 @@ spider_ua_white_list = ("qiniu", "cdn")
 #   这样用户感受到的延迟和流畅程度就会显著地改善
 # v0.23.0+ stream模式下传输的内容也可以使用本地缓存了, 图片被添加到stream模式
 # 重要: 永远不要把表示文本, 或者可能表示文本的mime关键字添加到stream模式中
-stream_transfer_enable = True
+enable_stream_content_transfer = True
 
 # v0.20.1+ if response's mime CONTAINS any of these words, it would be use stream mode.
-# steamed_mime_keywords = (
-#     "video",
-#     "audio",
-#     "binary",
-#     "octet-stream",
-#     "x-compress",
-#     "application/zip",
-#     "pdf",
-#     "msword",
-#     "powerpoint",
-#     "vnd.ms-excel",
-#     "image",  # v0.23.0+ image can use stream mode, too (experimental)
-# )
+steamed_mime_keywords = (
+    "video",
+    "audio",
+    "binary",
+    "octet-stream",
+    "x-compress",
+    "application/zip",
+    "pdf",
+    "msword",
+    "powerpoint",
+    "vnd.ms-excel",
+    "image",  # v0.23.0+ image can use stream mode, too (experimental)
+)
 
 # v0.20.1+ streamed content fetch size (per package)
-stream_buffer_size = 16384  # 16KB
+stream_transfer_buffer_size = 16384  # 16KB
 
 # v0.21.0+ streamed content async preload -- max preload packages number
 # 异步加载缓冲区存储的数据包的最大数量, 不要设置得太小
@@ -491,13 +490,13 @@ stream_transfer_async_preload_max_packages_size = 15
 # ############## Cron Tasks ##############
 # v0.21.4+ Cron Tasks, if you really know what you are doing, please do not disable this option
 # 定时任务, 除非你真的知道你在做什么, 否则请不要关闭本选项
-cron_task_enable = True
+enable_cron_tasks = True
 
 # from custom_func import your_own_cron_function
 
 # v0.21.4+ If you want to add your own cron tasks, please create the function in 'custom_func.py', and add it's name in `target`
 #   minimum task delay is 3 minutes (180 seconds), any delay that less than 3 minutes would be regarded as 3 minutes
-cron_task_list = [
+cron_tasks_list = [
     # builtin cache flush, unless you really know what you are doing, please do not remove these two tasks
     #   lower priority would be execute first
     # 对内置缓存的清理, 除非你真的知道你在做什么, 否则请不要移除这两个定时任务
@@ -526,10 +525,10 @@ cron_task_list = [
 #   缺点: 兼容性可能不如暴力重写强, 而且可能与 shadow_url_redirect_regex 会出现兼容性问题.
 #   如果不使用暴力重写, 请将 shadow_url_redirect_regex 中的重定向移到 url_custom_redirect_regex 中
 # 设置为None则关闭cookies path重写, cookies的path属性会被保持原样(默认值)
-# enable_aggressive_cookies_path_rewrite = None
+enable_aggressive_cookies_path_rewrite = None
 
 # ############## Misc ##############
-# custom_allowed_origin = None
+custom_allowed_origin = None
 
 # #####################################################
 # ################## EXPERT Settings ##################
@@ -549,7 +548,7 @@ cron_task_list = [
 #   非持久性: 百度云加速, 安全宝, etc..
 #   持久性: 七牛(本配置文件是以七牛为适配样例的), 腾讯云, 又拍, etc..
 # ##### 请一定要在 `spider_ua_white_list` 中加入对CDN机器人的UA的白名单 ####
-# enable_static_resource_CDN = False
+enable_static_resource_CDN = False
 
 # v0.14.0+ Now, instead of simply distinguish static resource using their url extension name,
 #    we can use MIME, which is more accurate and won't miss some modern ones without extension.
@@ -605,13 +604,13 @@ cron_task_list = [
 # Dependency 依赖:
 #     enable_static_resource_CDN == True
 #     mime_based_static_resource_CDN == True
-# cdn_redirect_code_if_cannot_hard_rewrite = 301
+cdn_redirect_code_if_cannot_hard_rewrite = 301
 
 # v0.24.1+
 # 进行CDN软重定向(301/307)的体积下限
 # 对于体积过小的响应, 将不进行软重定向, 跟上面那个选项配合使用
 # 可以避免对一些特别小的图片进行无谓的重定向
-# cdn_soft_redirect_minimum_size = 10 * 1024  # 10KB
+cdn_soft_redirect_minimum_size = 10 * 1024  # 10KB
 
 # v0.14.1+
 # When use soft redirect, whether encode(gzip + base64) query string into url path.
@@ -669,44 +668,44 @@ cron_task_list = [
 #     ---> https://cdn.domain.com/a  (no change)
 #
 # Recommended value: True
-# cdn_redirect_encode_query_str_into_url = True
+cdn_redirect_encode_query_str_into_url = True
 
 # v0.14.0 first add; v0.14.1 change format
 # format: 'MIME':'extension'
 # the extension affects the former `cdn_redirect_encode_query_str_into_url` option
-# mime_to_use_cdn = {
-#     "application/javascript": "js",
-#     "application/x-javascript": "js",
-#     "text/javascript": "js",  # javascript
-#     "text/css": "css",  # css
-#     # img
-#     "image/gif": "gif",
-#     "image/jpg": "jpg",
-#     "image/jpeg": "jpg",
-#     "image/png": "png",
-#     "image/svg+xml": "svg",
-#     "image/webp": "webp",
-#     # Fonts
-#     "application/vnd.ms-fontobject": "eot",
-#     "font/eot": "eot",
-#     "font/opentype": "woff",
-#     "application/x-font-ttf": "woff",
-#     "application/font-woff": "woff",
-#     "application/x-font-woff": "woff",
-#     "font/woff": "woff",
-#     "application/font-woff2": "woff2",
-#     # CDN the following large files MAY be not a good idea, you choose
-#     # 'image/bmp': 'bmp', 'video/mp4': 'mp4', 'video/ogg': 'ogg', 'video/webm': 'webm',
-#     # icon files MAY change frequently, you choose
-#     # 'image/vnd.microsoft.icon': 'ico', 'image/x-icon': 'ico',
-# }
+mime_to_use_cdn = {
+    "application/javascript": "js",
+    "application/x-javascript": "js",
+    "text/javascript": "js",  # javascript
+    "text/css": "css",  # css
+    # img
+    "image/gif": "gif",
+    "image/jpg": "jpg",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/svg+xml": "svg",
+    "image/webp": "webp",
+    # Fonts
+    "application/vnd.ms-fontobject": "eot",
+    "font/eot": "eot",
+    "font/opentype": "woff",
+    "application/x-font-ttf": "woff",
+    "application/font-woff": "woff",
+    "application/x-font-woff": "woff",
+    "font/woff": "woff",
+    "application/font-woff2": "woff2",
+    # CDN the following large files MAY be not a good idea, you choose
+    # 'image/bmp': 'bmp', 'video/mp4': 'mp4', 'video/ogg': 'ogg', 'video/webm': 'webm',
+    # icon files MAY change frequently, you choose
+    # 'image/vnd.microsoft.icon': 'ico', 'image/x-icon': 'ico',
+}
 
 # Your CDN domains, such as 'cdn.example.com', domain only, do not add slash(/), do not add scheme (http://)
 #     If your CDN storge your file permanently (like qiniu), you can disable local cache to save space,
 # but if your CDN is temporarily storge (like cloudflare), please keep local cache enabled.
 #
 # example: ('cdn1.example.com','cdn2.example.com','cdn3.example.com')
-# CDN_domains = ("cdn1.example.com", "cdn2.example.com", "cdn3.example.com")
+CDN_domains = ("cdn1.example.com", "cdn2.example.com", "cdn3.example.com")
 
 # ############## Custom Text Rewriter Function ##############
 # You can do some custom modifications/rewrites to the response content.
@@ -744,7 +743,7 @@ custom_text_rewriter_enable = False
 #   自定义函数若返回一个 flask.Response 对象, 则执行重定向, 直接返回这个 Response
 #   自定义函数若返回None, 则不进行重定向
 # 不应该修改parse变量 (添加头和cookie除外)
-# custom_prior_request_redirect_enable = False
+custom_prior_request_redirect_enable = False
 
 # ############## Misc ##############
 # v0.18.5+
@@ -752,12 +751,12 @@ custom_text_rewriter_enable = False
 # must be lower case
 # 在默认允许的headers以外添加一些允许被传送到用户的http响应头, 一般不需要添加自定义的. 内置的够用了
 # 必须全部小写
-# custom_allowed_remote_headers = {}
+custom_allowed_remote_headers = {}
 
 # v0.20.2+ If mime contains any of these keywords, it would be regarded as text
 #   some websites(such as twitter), would send some strange mime which also represent txt ('x-mpegurl')
 #   in these cases, you can add them here
-text_like_mime_types = ("text", "json", "javascript", "xml")
+text_like_mime_keywords = ("text", "json", "javascript", "xml")
 
 # v0.21.2+ Only serve static resources (based on mime)
 #   Only if remote response's mime contains in the `mime_to_use_cdn`, would be sent to client
@@ -766,7 +765,7 @@ text_like_mime_types = ("text", "json", "javascript", "xml")
 #   仅把MIME包含在 `mime_to_use_cdn` 中的响应发送回用户, 其他响应会被丢弃
 #       但是, 所有用户发送的请求都仍然会被发送到目标服务器, 仅会拦截响应
 #   注意: 视频在默认设置下是不包含在那个列表中的, 如果需要, 请去掉那个选项里视频mime的注释
-# only_serve_static_resources = False
+only_serve_static_resources = False
 
 # #####################################################
 # ################# DEVELOPER Settings ################
@@ -779,22 +778,22 @@ developer_string_trace = None
 # v0.18.6+ Dump all traffics (exclude cached)
 # If set to True, all traffic objects would be dumped to an pickle file,
 #   Include: time, flask request object, requests response object, our server's (flask) response object
-developer_dump_all_files = False
+developer_dump_all_traffics = False
 
 # v0.20.4+ temporary disable SSRF prevention
-developer_disable_ssrf_check = False
+developer_temporary_disable_ssrf_prevention = False
 
 # v0.25.0+
 # 本选项在 unittest 中会自动开启, 不需要人工开启
-# unittest_mode = False
+unittest_mode = False
 
 # v0.25.0+
 # 强制内部requests在请求远程服务器时不验证SSL证书
 # 在使用如 Fiddler 之类的抓包代理的时候很有用
-developer_disable_ssl_verify = False
+developer_do_not_verify_ssl = False
 
 # v0.28.0+
 # 实验性特性开关
 # 一般来说, 每个版本, 至多会有一项实验性功能(可能没有)
 # 当前版本没有实验性功能
-# developer_enable_experimental_feature = False
+developer_enable_experimental_feature = False

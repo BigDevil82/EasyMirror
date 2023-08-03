@@ -1,34 +1,17 @@
 from urllib.parse import urljoin, urlsplit
+
 from flask import request
 
-
 from utils.util import *
-from shares import Shares, logger, conf
-from threadlocal import ZmirrorThreadLocal
+
+from .shares import Shares, conf, logger
+from .threadlocal import ZmirrorThreadLocal
 
 
 class RequestRewriter:
     def __init__(self, parse: ZmirrorThreadLocal, shares: Shares) -> None:
         self.parse = parse
         self.G = shares
-
-    def extract_path_and_query(self, full_url=None, no_query=False):
-        """
-        Convert http://foo.bar.com/aaa/p.html?x=y to /aaa/p.html?x=y
-
-        Args:
-         - no_query: bool, if True, will not include query string
-         - full_url: str, the url to be processed, if None, will use current request url
-
-        return: path and query string(if need) of the url
-        """
-        if full_url is None:
-            full_url = request.url
-        split = urlsplit(full_url)
-        result = split.path or "/"
-        if not no_query and split.query:
-            result += "?" + split.query
-        return result
 
     def decode_mirror_url(self, mirror_url: str = None) -> dict:
         """
@@ -45,7 +28,7 @@ class RequestRewriter:
         result = {}
 
         if mirror_url is None:
-            mirror_path_query = self.extract_path_and_query()  # type: str
+            mirror_path_query = self.G.extract_path_and_query()  # type: str
         else:
             if r"\/" in mirror_url:  # 如果 \/ 在url中, 先反转义, 处理完后再转义回来
                 _is_escaped_slash = True
@@ -70,7 +53,7 @@ class RequestRewriter:
                 _is_https = True
             else:
                 # 如果是 /extdomains/域名 形式, 没有 "https-" 那么根据域名判断是否使用HTTPS
-                _is_https = self.is_target_domain_use_https(real_domain)
+                _is_https = self.G.is_target_domain_use_https(real_domain)
 
             # real_path_query = self.client_requests_text_rewrite(real_path_query)
 
@@ -95,17 +78,6 @@ class RequestRewriter:
         result["path_query"] = mirror_path_query
         result["path"] = urlsplit(mirror_path_query).path
         return result
-
-    def is_target_domain_use_https(self, domain):
-        """请求目标域名时是否使用https"""
-        if conf.force_https_domains == "NONE" or conf.force_https_domains is None:
-            return False
-        if conf.force_https_domains == "ALL":
-            return True
-        if domain in conf.force_https_domains:
-            return True
-        else:
-            return False
 
     def assemble_remote_url(self):
         """
@@ -143,61 +115,6 @@ class RequestRewriter:
             "   path_query:",
             self.parse.remote_path_query,
         )
-
-    def client_requests_text_rewrite(self, raw_text):
-        """
-        Rewrite proxy domain to origin domain, extdomains supported.
-        Also Support urlencoded url.
-        This usually used in rewriting request params
-
-        eg. http://foo.bar/extdomains/accounts.google.com to http://accounts.google.com
-        eg2. foo.bar/foobar to www.google.com/foobar
-        eg3. http%3a%2f%2fg.zju.tools%2fextdomains%2Faccounts.google.com%2f233
-                to http%3a%2f%2faccounts.google.com%2f233
-
-        :type raw_text: str
-        :rtype: str
-        """
-
-        def replace_to_real_domain(match_obj: re.Match):
-            scheme = get_group("scheme", match_obj)  # type: str
-            colon = match_obj.group("colon")  # type: str
-            scheme_slash = get_group("scheme_slash", match_obj)  # type: str
-            _is_https = bool(get_group("is_https", match_obj))  # type: bool
-            real_domain = match_obj.group("real_domain")  # type: str
-
-            result = ""
-            if scheme:
-                if "http" in scheme:
-                    if _is_https or self.is_target_domain_use_https(real_domain):
-                        result += "https" + colon
-                    else:
-                        result += "http" + colon
-
-                result += scheme_slash * 2
-
-            result += real_domain
-
-            return result
-
-        # 使用一个复杂的正则进行替换, 这次替换以后, 理论上所有 extdomains 都会被剔除
-        # 详见本文件顶部, regex_request_rewriter_extdomains 本体
-        replaced = self.G.re_patterns["ext_domains"].sub(replace_to_real_domain, raw_text)
-
-        if conf.developer_string_trace is not None and conf.developer_string_trace in replaced:
-            # debug用代码, 对正常运行无任何作用
-            logger.info(
-                "StringTrace: appears client_requests_text_rewrite, code line no. ", current_line_number()
-            )
-
-        # 正则替换掉单独的, 不含 /extdomains/ 的主域名
-        replaced = self.G.re_patterns["main_domain"].sub(conf.target_domain, replaced)
-
-        # 为了保险起见, 再进行一次裸的替换
-        replaced = replaced.replace(conf.my_host_name, conf.target_domain)
-
-        logger.debug("ClientRequestedUrl: ", raw_text, "<- Has Been Rewrited To ->", replaced)
-        return replaced
 
     def extract_client_header(self):
         """
@@ -242,11 +159,11 @@ class RequestRewriter:
             else:
                 # ------------------ 其他请求头的处理 -------------------
                 # 对于其他的头, 进行一次内容重写后保留
-                rewrited_headers[head_name_l] = self.client_requests_text_rewrite(head_value)
+                rewrited_headers[head_name_l] = self.G.client_requests_text_rewrite(head_value)
 
                 # 移除掉 cookie 中的 zmirror_verify
                 if head_name_l == "cookie":
-                    rewrited_headers[head_name_l] = self.re_patterns["verify_header"].sub(
+                    rewrited_headers[head_name_l] = self.G.re_patterns["verify_header"].sub(
                         "",
                         rewrited_headers[head_name_l],
                     )
